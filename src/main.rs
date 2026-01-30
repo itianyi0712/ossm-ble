@@ -23,6 +23,7 @@ mod motor;
 mod motor_57aim30;
 mod motor_pwm;
 mod storage;
+mod ble;
 
 use command::handle_stdin_command;
 use context::AppContext;
@@ -106,6 +107,14 @@ fn run_app() -> anyhow::Result<()> {
     // setup http api
     let mut server = EspHttpServer::new(&Default::default())?;
     http_api::register_handlers(&mut server, app_context.clone());
+
+    // setup BLE server
+    let ble_server = ble::BleServer::new(app_context.clone());
+    if let Err(e) = ble_server.start() {
+        log::error!("Failed to start BLE server: {}", e);
+    } else {
+        log::info!("BLE server started successfully");
+    }
 
     if let Err(e) = run_motor(app_context, peripherals.uart1) {
         log::error!("Motor task failed: {}", e);

@@ -1,0 +1,66 @@
+name: Build and Release Firmware
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  build:
+    name: Build Firmware
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: nightly
+          components: rust-src rustfmt clippy
+          
+      - name: Install ESP-IDF prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git wget flex bison gperf python3 python3-pip python3-venv cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
+          
+      - name: Install espup and setup toolchain
+        run: |
+          cargo install espup
+          espup install --targets esp32c6
+          source $HOME/export-esp.sh
+          
+      - name: Install ldproxy
+        run: cargo install ldproxy
+        
+      - name: Enable caching
+        uses: Swatinem/rust-cache@v2
+        
+      - name: Build firmware
+        run: |
+          source $HOME/export-esp.sh
+          cargo build --release
+          
+      - name: Create firmware binary
+        run: |
+          source $HOME/export-esp.sh
+          cargo install espflash
+          espflash save-image --chip esp32c6 target/riscv32imac-esp-espidf/release/ossm-ble firmware.bin
+          
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ossm-ble-firmware
+          path: firmware.bin
+          
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: firmware.bin
+          generate_release_notes: true
